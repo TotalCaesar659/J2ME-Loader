@@ -11,6 +11,8 @@ import java.io.InputStream;
 import java.io.DataInputStream;
 import java.io.OutputStream;
 import java.io.DataOutputStream;
+
+import javax.bluetooth.UUID;
 import javax.microedition.io.StreamConnection;
 import javax.microedition.io.StreamConnectionNotifier;
 
@@ -23,6 +25,7 @@ import java.nio.ByteOrder;
 
 public class Connection implements ConnectionImplementation, StreamConnectionNotifier, StreamConnection {
 	private BluetoothServerSocket serverSocket = null;
+	private BluetoothServerSocket nameServerSocket = null;
 	public BluetoothSocket socket = null;
 	public javax.bluetooth.UUID connUuid = null;
 
@@ -157,32 +160,31 @@ public class Connection implements ConnectionImplementation, StreamConnectionNot
 
 			// Android 6.0.1 bug: UUID is reversed
 			// see https://issuetracker.google.com/issues/37075233
-			serverSocket = adapter.listenUsingInsecureRfcommWithServiceRecord(srvname, btUuid);
+			UUID NameUuid = new UUID(0x1102);
+			nameServerSocket = adapter.listenUsingInsecureRfcommWithServiceRecord(srvname, NameUuid.uuid);
 
 			String finalSrvname = srvname;
 			// Send service name to client
-			Thread connectThread = new Thread(new Runnable() {
-				@Override
-				public void run() {
-					try {
-						byte[] dstByte = new byte[256];
-						byte[] srcByte = finalSrvname.getBytes();
-						System.arraycopy(srcByte, 0, dstByte, 0, srcByte.length);
-						BluetoothSocket connectSocket = serverSocket.accept();
-						OutputStream os = connectSocket.getOutputStream();
-						os.write(dstByte);
-						os.flush();
-						serverSocket.close();
-						if (secure)
-							serverSocket = adapter.listenUsingRfcommWithServiceRecord(finalSrvname, btUuid);
-						else
-							serverSocket = adapter.listenUsingInsecureRfcommWithServiceRecord(finalSrvname, btUuid);
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
+			Thread connectThread = new Thread(() -> {
+				try {
+					byte[] dstByte = new byte[256];
+					byte[] srcByte = finalSrvname.getBytes();
+					System.arraycopy(srcByte, 0, dstByte, 0, srcByte.length);
+					BluetoothSocket connectSocket = nameServerSocket.accept();
+					OutputStream os = connectSocket.getOutputStream();
+					os.write(0);
+					os.write(dstByte);
+					os.flush();
+					nameServerSocket.close();
+				} catch (IOException e) {
+					e.printStackTrace();
 				}
 			});
-			connectThread.run();
+			connectThread.start();
+			if (secure)
+				serverSocket = adapter.listenUsingRfcommWithServiceRecord(finalSrvname, btUuid);
+			else
+				serverSocket = adapter.listenUsingInsecureRfcommWithServiceRecord(finalSrvname, btUuid);
 		} else {
 			StringBuilder sb = new StringBuilder(host);
 			for (int i = 2; i < sb.length(); i += 3)

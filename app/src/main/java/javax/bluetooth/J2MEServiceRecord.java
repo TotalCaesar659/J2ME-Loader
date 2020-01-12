@@ -6,12 +6,15 @@ class J2MEServiceRecord implements ServiceRecord {
 	private RemoteDevice dev;
 	private UUID uuid;
 	private boolean skipAfterWrite;
+	private boolean btl2cap;
 	private HashMap<Integer, DataElement> dataElements = new HashMap<>();
 
-	public J2MEServiceRecord(RemoteDevice dev, UUID uuid, boolean skipAfterWrite) {
+	public J2MEServiceRecord(RemoteDevice dev, UUID uuid,
+							 boolean skipAfterWrite, boolean btl2cap) {
 		this.dev = dev;
 		this.uuid = uuid;
 		this.skipAfterWrite = skipAfterWrite;
+		this.btl2cap = btl2cap;
 	}
 
 	public RemoteDevice getHostDevice() {
@@ -20,7 +23,7 @@ class J2MEServiceRecord implements ServiceRecord {
 
 	public String getConnectionURL(int requiredSecurity, boolean mustBeMaster) {
 		StringBuilder sb;
-		if (dev.btl2cap)
+		if (btl2cap)
 			sb = new StringBuilder("btl2cap://");
 		else
 			sb = new StringBuilder("btspp://");

@@ -3,7 +3,6 @@ package javax.bluetooth;
 import javax.microedition.io.Connection;
 
 import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothDevice;
 import android.content.Intent;
 import android.app.Activity;
 import javax.microedition.util.ActivityResultListener;
@@ -149,23 +148,24 @@ public class LocalDevice implements ActivityResultListener {
 		if (notifier == null) {
 			throw new NullPointerException("notifier is null");
 		}
+		if (!(notifier instanceof org.microemu.cldc.btspp.Connection || notifier instanceof org.microemu.cldc.btl2cap.Connection))
+			throw new java.lang.IllegalArgumentException("not a RFCOMM connection");
 
 		if (notifier instanceof org.microemu.cldc.btspp.Connection) {
 			org.microemu.cldc.btspp.Connection conn = (org.microemu.cldc.btspp.Connection) notifier;
 			if (conn.socket == null)
 				// probably calling this for local device, so socket isn't opened
-				return new J2MEServiceRecord(null, conn.connUuid, false);
+				return new J2MEServiceRecord(null, conn.connUuid, false, false);
 			else
-				return new J2MEServiceRecord(new RemoteDevice(conn.socket.getRemoteDevice(), false), conn.connUuid, false);
-		} if (notifier instanceof org.microemu.cldc.btl2cap.Connection) {
+				return new J2MEServiceRecord(new RemoteDevice(conn.socket.getRemoteDevice()), conn.connUuid, false, false);
+		} else {
 			org.microemu.cldc.btl2cap.Connection conn = (org.microemu.cldc.btl2cap.Connection) notifier;
 			if (conn.socket == null)
 				// probably calling this for local device, so socket isn't opened
-				return new J2MEServiceRecord(null, conn.connUuid, false);
+				return new J2MEServiceRecord(null, conn.connUuid, false, true);
 			else
-				return new J2MEServiceRecord(new RemoteDevice(conn.socket.getRemoteDevice(), true), conn.connUuid, false);
-		} else
-			throw new IllegalArgumentException("notifier is not BTSPP connection");
+				return new J2MEServiceRecord(new RemoteDevice(conn.socket.getRemoteDevice()), conn.connUuid, false, true);
+		}
 	}
 	// Not supported on Android due to API limitations
 	public void updateRecord(ServiceRecord srvRecord) throws ServiceRegistrationException {

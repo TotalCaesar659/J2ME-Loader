@@ -44,6 +44,7 @@ public class DiscoveryAgent {
 		public volatile boolean discovering = false;
 
 		private String serviceName = null;
+		private boolean btl2cap = false;
 		private int id;
 
 		public Transaction(int transID, int[] attrs, UUID[] uuids, RemoteDevice dev, DiscoveryListener listener) {
@@ -78,6 +79,7 @@ public class DiscoveryAgent {
 					LinkedList<J2MEServiceRecord> records = new LinkedList<J2MEServiceRecord>();
 					UUID[] uuidExtra = null;
 					UUID SppUuid = new UUID(0x1101);
+					UUID NameUuid = new UUID(0x1102);
 					// SE phones publish a SPP service UUID instead of requested one
 					boolean supportsSPP = false;
 					{
@@ -92,37 +94,45 @@ public class DiscoveryAgent {
 					for (int i = 0; !stop && (uuidExtra != null) && (i < uuidExtra.length); i++) {
 						if (uuidExtra[i].equals(SppUuid))
 							supportsSPP = true;
+						if (uuidExtra[i].equals(NameUuid)) {
+							// Workaround to get service name
+							if (!btl2cap && serviceName == null) {
+								try {
+									BluetoothSocket bluetoothSocket = dev.dev.createInsecureRfcommSocketToServiceRecord(NameUuid.uuid);
+									if (!bluetoothSocket.isConnected()) {
+										bluetoothSocket.connect();
+									}
+									InputStream is = bluetoothSocket.getInputStream();
+									byte[] resByte = new byte[256];
+									btl2cap = is.read() == 1;
+									is.read(resByte);
+									if (attrs != null && attrs.length > 0) {
+										serviceName = new String(resByte).trim();
+									}
+									bluetoothSocket.close();
+								} catch (IOException e) {
+									e.printStackTrace();
+								}
+							}
+						}
 						for (int j = 0; !stop && j < uuids.length; j++) {
 							if (uuidExtra[i].uuid.equals(uuids[j].uuid) || uuidExtra[i].uuid.equals(byteSwappedUuid(uuids[j].uuid))) {
-								J2MEServiceRecord record = new J2MEServiceRecord(dev, uuids[j], false);
-								// Workaround to get service name
-								if (!dev.btl2cap && serviceName == null) {
-									try {
-										BluetoothSocket bluetoothSocket = dev.dev.createInsecureRfcommSocketToServiceRecord(uuids[j].uuid);
-										if(!bluetoothSocket.isConnected()) {
-											bluetoothSocket.connect();
-										}
-										InputStream is = bluetoothSocket.getInputStream();
-										byte[] resByte = new byte[256];
-										is.read(resByte);
-										if (attrs != null && attrs.length > 0) {
-											serviceName = new String(resByte).trim();
-											record.setAttributeValue(attrs[0], new DataElement(DataElement.STRING, serviceName));
-										}
-										bluetoothSocket.close();
-									} catch (IOException e) {
-										e.printStackTrace();
-									}
-								}
+								J2MEServiceRecord record = new J2MEServiceRecord(dev, uuids[j], false, btl2cap);
 								records.add(record);
 							}
 						}
 					}
+					if (serviceName != null) {
+						for (J2MEServiceRecord record : records) {
+							record.setAttributeValue(attrs[0], new DataElement(DataElement.STRING, serviceName));
+						}
+					}
 
 					if (records.isEmpty() && supportsSPP)
-						listener.servicesDiscovered(transID, new J2MEServiceRecord[] {new J2MEServiceRecord(dev, new UUID(0x1101), true)});
+						listener.servicesDiscovered(transID, new J2MEServiceRecord[]
+								{new J2MEServiceRecord(dev, new UUID(0x1101), true, false)});
 					else {
-						J2MEServiceRecord[] casted = records.toArray(new J2MEServiceRecord[records.size()]);
+						J2MEServiceRecord[] casted = records.toArray(new J2MEServiceRecord[0]);
 						listener.servicesDiscovered(transID, casted);
 					}
 					listener.serviceSearchCompleted(transID, (records.isEmpty() && !supportsSPP) ? DiscoveryListener.SERVICE_SEARCH_NO_RECORDS :
@@ -148,7 +158,7 @@ public class DiscoveryAgent {
 		Set<BluetoothDevice> set = adapter.getBondedDevices();
 		RemoteDevice[] devices = new RemoteDevice[set.size()];
 		int i = 0;
-		for (BluetoothDevice device : set) devices[i++] = new RemoteDevice(device, false);
+		for (BluetoothDevice device : set) devices[i++] = new RemoteDevice(device);
 		return devices;
 	}
 
@@ -188,7 +198,7 @@ public class DiscoveryAgent {
 				String action = intent.getAction();
 				if (BluetoothDevice.ACTION_FOUND.equals(action)) {
 					BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-					RemoteDevice dev = new RemoteDevice(device, false);
+					RemoteDevice dev = new RemoteDevice(device);
 					DeviceClass cod = new DeviceClass(device.getBluetoothClass());
 					listener.deviceDiscovered(dev, cod);
 				} else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {

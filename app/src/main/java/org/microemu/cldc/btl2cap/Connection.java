@@ -37,11 +37,13 @@ import java.lang.reflect.Method;
 
 import javax.bluetooth.L2CAPConnection;
 import javax.bluetooth.L2CAPConnectionNotifier;
+import javax.bluetooth.UUID;
 import javax.microedition.io.StreamConnection;
 import javax.microedition.io.StreamConnectionNotifier;
 
 public class Connection implements ConnectionImplementation, L2CAPConnection, L2CAPConnectionNotifier {
 	private BluetoothServerSocket serverSocket = null;
+	private BluetoothServerSocket nameServerSocket = null;
 	public BluetoothSocket socket = null;
 	public javax.bluetooth.UUID connUuid = null;
 	private boolean skipAfterWrite = false;
@@ -70,7 +72,7 @@ public class Connection implements ConnectionImplementation, L2CAPConnection, L2
 
 	@Override
 	public boolean ready() throws IOException {
-		return true;
+		return is.available() > 0;
 	}
 
 	public javax.microedition.io.Connection openConnection(String name, int mode, boolean timeouts) throws IOException {
@@ -115,10 +117,31 @@ public class Connection implements ConnectionImplementation, L2CAPConnection, L2
 
 			// Android 6.0.1 bug: UUID is reversed
 			// see https://issuetracker.google.com/issues/37075233
+			UUID NameUuid = new UUID(0x1102);
+			nameServerSocket = adapter.listenUsingInsecureRfcommWithServiceRecord(srvname, NameUuid.uuid);
+
+			String finalSrvname = srvname;
+			// Send service name to client
+			Thread connectThread = new Thread(() -> {
+				try {
+					byte[] dstByte = new byte[256];
+					byte[] srcByte = finalSrvname.getBytes();
+					System.arraycopy(srcByte, 0, dstByte, 0, srcByte.length);
+					BluetoothSocket connectSocket = nameServerSocket.accept();
+					OutputStream os = connectSocket.getOutputStream();
+					os.write(1);
+					os.write(dstByte);
+					os.flush();
+					nameServerSocket.close();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			});
+			connectThread.start();
 			if (secure)
-				serverSocket = adapter.listenUsingRfcommWithServiceRecord(srvname, btUuid);
+				serverSocket = adapter.listenUsingRfcommWithServiceRecord(finalSrvname, btUuid);
 			else
-				serverSocket = adapter.listenUsingInsecureRfcommWithServiceRecord(srvname, btUuid);
+				serverSocket = adapter.listenUsingInsecureRfcommWithServiceRecord(finalSrvname, btUuid);
 		} else {
 			StringBuilder sb = new StringBuilder(host);
 			for (int i = 2; i < sb.length(); i += 3)
@@ -133,7 +156,10 @@ public class Connection implements ConnectionImplementation, L2CAPConnection, L2
 
 			try {
 				socket.connect();
+				os = socket.getOutputStream();
+				is = socket.getInputStream();
 			} catch (IOException e) {
+				e.printStackTrace();
 			}
 		}
 		return this;
@@ -143,6 +169,8 @@ public class Connection implements ConnectionImplementation, L2CAPConnection, L2
 	public L2CAPConnection acceptAndOpen() throws IOException {
 		if (serverSocket != null) {
 			socket = serverSocket.accept();
+			os = socket.getOutputStream();
+			is = socket.getInputStream();
 			serverSocket.close();
 			serverSocket = null;
 		}

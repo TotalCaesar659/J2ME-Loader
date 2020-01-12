@@ -7,11 +7,9 @@ import android.bluetooth.BluetoothDevice;
 
 public class RemoteDevice {
 	BluetoothDevice dev;
-	boolean btl2cap;
 
-	RemoteDevice(BluetoothDevice dev, boolean btl2cap) {
+	RemoteDevice(BluetoothDevice dev) {
 		this.dev = dev;
-		this.btl2cap = btl2cap;
 	}
 
 	static String javaToAndroidAddress(String addr) {
@@ -57,14 +55,13 @@ public class RemoteDevice {
 			org.microemu.cldc.btspp.Connection connection = (org.microemu.cldc.btspp.Connection) conn;
 			if (connection.socket == null)
 				throw new IOException("socket is null");
-			return new RemoteDevice(connection.socket.getRemoteDevice(), false);
-		} if (conn instanceof org.microemu.cldc.btl2cap.Connection) {
+			return new RemoteDevice(connection.socket.getRemoteDevice());
+		} else {
 			org.microemu.cldc.btl2cap.Connection connection = (org.microemu.cldc.btl2cap.Connection) conn;
 			if (connection.socket == null)
 				throw new IOException("socket is null");
-			return new RemoteDevice(connection.socket.getRemoteDevice(), true);
-		} else
-			throw new IllegalArgumentException("notifier is not BTSPP connection");
+			return new RemoteDevice(connection.socket.getRemoteDevice());
+		}
 	}
 
 	public boolean authenticate() throws IOException {
